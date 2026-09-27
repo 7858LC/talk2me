@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>talk2me — speech feasibility spike</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --fg: #1d1d1b; --muted: #6b6b66; --card: #ffffff;
+    --line: #dcdcd6; --accent: #2a6fd6; --ok: #1f8a4c; --bad: #c0392b; --warn: #b7791f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --fg: #ececea; --muted: #9a9a94; --card: #1f1f1d;
+      --line: #34342f; --accent: #6ea1f0; --ok: #4cc27f; --bad: #ef6b5e; --warn: #e0a84a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  p.sub { color: var(--muted); margin: 0 0 16px; font-size: .9rem; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px; margin-bottom: 14px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 14px 18px;
+           background: var(--accent); color: #fff; min-height: 48px; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .45; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > button { flex: 1 1 140px; }
+  select, input { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+                  background: var(--bg); color: var(--fg); min-height: 44px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--muted); padding-right: 12px; width: 45%; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  #status { font-weight: 600; }
+  #final { min-height: 3em; white-space: pre-wrap; }
+  #interim { color: var(--muted); font-style: italic; min-height: 1.5em; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .metric { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .metric .v { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric .k { color: var(--muted); font-size: .8rem; }
+  ol.prompts { padding-left: 1.2em; margin: 0; }
+  ol.prompts li { margin-bottom: 6px; }
+  pre#log { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap;
+            word-break: break-word; max-height: 320px; overflow: auto; margin: 0;
+            background: var(--bg); padding: 8px; border-radius: 6px; }
+  small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>talk2me — speech test</h1>
+  <p class="sub">Throwaway feasibility spike. Finds out what the browser's speech
+  recognition actually captures on this phone before the app's metrics get locked.</p>
+
+  <section>
+    <h2>1. Capabilities</h2>
+    <table id="caps"></table>
+  </section>
+
+  <section>
+    <h2>2. Record</h2>
+    <div class="row" style="margin-bottom:10px">
+      <select id="lang" aria-label="Language">
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+      </select>
+      <label class="row" style="gap:6px"><input type="checkbox" id="continuous" checked> continuous</label>
+    </div>
+    <div class="row">
+      <button id="start">Start</button>
+      <button id="stop" class="secondary" disabled>Stop</button>
+    </div>
+    <p>Status: <span id="status">idle</span></p>
+    <div id="interim"></div>
+    <div id="final"></div>
+  </section>
+
+  <section>
+    <h2>3. Say these (deliberately)</h2>
+    <ol class="prompts">
+      <li>Normal: "I would like to book a table for two at seven tonight."</li>
+      <li>With fillers: "So, um, I think, uh, we should, like, leave early."</li>
+      <li>With a 3-second pause mid-sentence: "The meeting is on Tuesday … at nine."</li>
+      <li>Fast, then slow: read sentence 1 quickly, then again slowly.</li>
+    </ol>
+    <small>Watch whether "um" / "uh" appear in the transcript at all — that decides
+    whether a filler-word metric is possible.</small>
+  </section>
+
+  <section>
+    <h2>4. Metrics (this run)</h2>
+    <div class="metrics">
+      <div class="metric"><div class="v" id="m-words">0</div><div class="k">words (final)</div></div>
+      <div class="metric"><div class="v" id="m-hard">0</div><div class="k">um / uh / er / ah / hmm</div></div>
+      <div class="metric"><div class="v" id="m-soft">0</div><div class="k">like / you know / so</div></div>
+      <div class="metric"><div class="v" id="m-wpm">–</div><div class="k">approx. words / min</div></div>
+      <div class="metric"><div class="v" id="m-pauses">0</div><div class="k">gaps &gt; 1.5 s between results</div></div>
+      <div class="metric"><div class="v" id="m-conf">–</div><div class="k">confidence (last final)</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Speech output</h2>
+    <div class="row" style="margin-bottom:10px">
+      <select id="voice" aria-label="Voice" style="flex:1 1 100%"></select>
+    </div>
+    <div class="row">
+      <button id="speak" class="secondary">Speak a partner line</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>6. Raw event log</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="copy">Copy log + results</button>
+      <button id="clear" class="secondary">Clear</button>
+    </div>
+    <small id="copied"></small>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const HARD = /\b(u+m+|u+h+|e+r+m*|a+h+|h+m+)\b/gi;
+  const SOFT = /\b(like|you know|so)\b/gi;
+  const PAUSE_MS = 1500;
+
+  let rec = null, t0 = 0, firstSpeech = null, lastResultAt = null, resultTimes = [];
+  let finals = [], lastConfidence = null, running = false, lastError = null;
+  const logLines = [];
+
+  const t = () => ((performance.now() - t0) / 1000).toFixed(2).padStart(7);
+  function log(msg) {
+    const line = `${t0 ? t() : '   0.00'}s  ${msg}`;
+    logLines.push(line);
+    const el = $('log');
+    el.textContent += line + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---- capabilities ----
+  function capRow(k, v, cls) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${k}</td><td class="${cls || ''}">${v}</td>`;
+    $('caps').appendChild(tr);
+  }
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  capRow('SpeechRecognition', SR ? (window.SpeechRecognition ? 'yes (unprefixed)' : 'yes (webkit prefix)') : 'NOT available', SR ? 'ok' : 'bad');
+  capRow('speechSynthesis', 'speechSynthesis' in window ? 'yes' : 'NOT available', 'speechSynthesis' in window ? 'ok' : 'bad');
+  capRow('Secure context (HTTPS)', window.isSecureContext ? 'yes' : 'no — mic will be blocked', window.isSecureContext ? 'ok' : 'bad');
+  capRow('Running as installed app', standalone ? 'yes' : 'no (browser tab)');
+  capRow('On-device recognition', SR && typeof SR.available === 'function' ? 'checking…' : 'not exposed by this browser', '');
+  const onDeviceCell = $('caps').rows[$('caps').rows.length - 1].cells[1];
+  capRow('User agent', navigator.userAgent);
+
+  if (SR && typeof SR.available === 'function') {
+    // Newer Chrome exposes on-device availability; shape of the API may vary.
+    Promise.resolve()
+      .then(() => SR.available({ langs: [$('lang').value], processLocally: true }))
+      .then((r) => { onDeviceCell.textContent = String(r); log(`on-device availability for ${$('lang').value}: ${JSON.stringify(r)}`); })
+      .catch((e) => { onDeviceCell.textContent = 'check failed'; log(`on-device availability check failed: ${e && e.message ? e.message : e}`); });
+  }
+
+  // ---- recognition ----
+  function resetRun() {
+    t0 = performance.now(); firstSpeech = null; lastResultAt = null; resultTimes = [];
+    finals = []; lastConfidence = null; lastError = null;
+    $('final').textContent = ''; $('interim').textContent = '';
+    updateMetrics();
+  }
+
+  function updateMetrics() {
+    const text = finals.join(' ');
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    $('m-words').textContent = words;
+    $('m-hard').textContent = (text.match(HARD) || []).length;
+    $('m-soft').textContent = (text.match(SOFT) || []).length;
+    if (firstSpeech !== null && lastResultAt !== null && lastResultAt > firstSpeech && words) {
+      const mins = (lastResultAt - firstSpeech) / 60000;
+      $('m-wpm').textContent = Math.round(words / mins);
+    } else { $('m-wpm').textContent = '–'; }
+    let pauses = 0;
+    for (let i = 1; i < resultTimes.length; i++) if (resultTimes[i] - resultTimes[i - 1] > PAUSE_MS) pauses++;
+    $('m-pauses').textContent = pauses;
+    $('m-conf').textContent = lastConfidence === null ? '–' : lastConfidence.toFixed(2);
+  }
+
+  function setRunning(on) {
+    running = on;
+    $('start').disabled = on; $('stop').disabled = !on;
+    $('status').textContent = on ? 'listening…' : (lastError ? 'stopped — error: ' + lastError : 'idle');
+  }
+
+  function start() {
+    if (!SR) { log('SpeechRecognition not available in this browser'); return; }
+    resetRun();
+    rec = new SR();
+    rec.lang = $('lang').value;
+    rec.continuous = $('continuous').checked;
+    rec.interimResults = true;
+    rec.maxAlternatives = 3;
+    log(`start lang=${rec.lang} continuous=${rec.continuous}`);
+
+    ['audiostart', 'soundstart', 'soundend', 'audioend', 'speechend', 'nomatch']
+      .forEach((ev) => rec.addEventListener(ev, () => log(ev)));
+    rec.onstart = () => { log('start (recognizer running)'); setRunning(true); };
+    rec.onspeechstart = () => { if (firstSpeech === null) firstSpeech = performance.now(); log('speechstart'); };
+    rec.onerror = (e) => { lastError = e.error; log(`ERROR ${e.error}${e.message ? ' — ' + e.message : ''}`); };
+    rec.onend = () => { log('end (recognizer stopped)'); setRunning(false); updateMetrics(); };
+    rec.onresult = (e) => {
+      const now = performance.now();
+      if (firstSpeech === null) firstSpeech = now;
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        const alts = Array.from(r).map((a) => `"${a.transcript.trim()}" (${a.confidence.toFixed(2)})`).join(' | ');
+        log(`result[${i}] ${r.isFinal ? 'FINAL ' : 'interim'} ${alts}`);
+        if (r.isFinal) {
+          finals.push(r[0].transcript.trim());
+          lastConfidence = r[0].confidence;
+          lastResultAt = now;
+          resultTimes.push(now);
+        } else {
+          interim += r[0].transcript;
+        }
+      }
+      $('interim').textContent = interim;
+      $('final').textContent = finals.join('\n');
+      updateMetrics();
+    };
+    try { rec.start(); } catch (err) { log('start() threw: ' + err.message); }
+  }
+
+  $('start').onclick = start;
+  $('stop').onclick = () => { if (rec) { log('stop() called'); rec.stop(); } };
+
+  // ---- speech output ----
+  function loadVoices() {
+    if (!('speechSynthesis' in window)) return;
+    const voices = speechSynthesis.getVoices();
+    const sel = $('voice');
+    sel.innerHTML = '';
+    voices.filter((v) => v.lang.startsWith('en')).forEach((v) => {
+      const o = document.createElement('option');
+      o.value = v.name; o.textContent = `${v.name} (${v.lang})${v.localService ? ' · on-device' : ''}`;
+      sel.appendChild(o);
+    });
+    if (!sel.options.length) sel.innerHTML = '<option>(no English voices reported yet)</option>';
+  }
+  if ('speechSynthesis' in window) {
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  }
+  $('speak').onclick = () => {
+    if (!('speechSynthesis' in window)) { log('speechSynthesis not available'); return; }
+    const u = new SpeechSynthesisUtterance('Good evening. Do you have a reservation with us tonight?');
+    const v = speechSynthesis.getVoices().find((x) => x.name === $('voice').value);
+    if (v) u.voice = v;
+    u.onstart = () => log(`tts start voice=${v ? v.name : 'default'}`);
+    u.onend = () => log('tts end');
+    u.onerror = (e) => log('tts error ' + e.error);
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  };
+
+  // ---- log export ----
+  $('copy').onclick = async () => {
+    const caps = Array.from($('caps').rows).map((r) => `${r.cells[0].textContent}: ${r.cells[1].textContent}`).join('\n');
+    const metrics = ['m-words', 'm-hard', 'm-soft', 'm-wpm', 'm-pauses', 'm-conf']
+      .map((id) => `${id.slice(2)}=${$(id).textContent}`).join('  ');
+    const text = `== capabilities ==\n${caps}\n\n== final transcript ==\n${finals.join('\n')}\n\n== metrics ==\n${metrics}\n\n== log ==\n${logLines.join('\n')}`;
+    try { await navigator.clipboard.writeText(text); $('copied').textContent = 'Copied — paste it into the chat.'; }
+    catch { $('copied').textContent = 'Clipboard blocked — long-press the log to select and copy.'; }
+  };
+  $('clear').onclick = () => { logLines.length = 0; $('log').textContent = ''; resetRun(); t0 = 0; };
+})();
+</script>
+</body>
+</html>
